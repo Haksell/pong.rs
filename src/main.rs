@@ -181,18 +181,15 @@ fn update_scoreboard(
 
 fn spawn_scoreboard(mut commands: Commands) {
     commands.spawn((
-        // Create a TextBundle that has a Text with a single section.
         TextBundle::from_section(
-            // Accepts a `String` or any type that converts into a `String`, such as `&str`
             "0",
             TextStyle {
                 font_size: 72.0,
                 color: Color::WHITE,
                 ..default()
             },
-        ) // Set the alignment of the Text
+        )
         .with_text_justify(JustifyText::Center)
-        // Set the style of the TextBundle itself.
         .with_style(Style {
             position_type: PositionType::Absolute,
             top: Val::Px(5.0),
@@ -203,18 +200,15 @@ fn spawn_scoreboard(mut commands: Commands) {
     ));
 
     commands.spawn((
-        // Create a TextBundle that has a Text with a single section.
         TextBundle::from_section(
-            // Accepts a `String` or any type that converts into a `String`, such as `&str`
             "0",
             TextStyle {
                 font_size: 72.0,
                 color: Color::WHITE,
                 ..default()
             },
-        ) // Set the alignment of the Text
+        )
         .with_text_justify(JustifyText::Center)
-        // Set the style of the TextBundle itself.
         .with_style(Style {
             position_type: PositionType::Absolute,
             top: Val::Px(5.0),
@@ -260,16 +254,12 @@ fn reset_ball(
 ) {
     for event in events.read() {
         if let Ok((mut position, mut velocity)) = ball.get_single_mut() {
-            match event.0 {
-                Scorer::Ai => {
-                    position.0 = Vec2::new(0., 0.);
-                    velocity.0 = Vec2::new(-1., 1.);
-                }
-                Scorer::Player => {
-                    position.0 = Vec2::new(0., 0.);
-                    velocity.0 = Vec2::new(1., 1.);
-                }
-            }
+            position.0 = Vec2::new(0., 0.);
+            velocity.0.x = match event.0 {
+                Scorer::Ai => -1.,
+                Scorer::Player => 1.,
+            };
+            velocity.0.y = 1.;
         }
     }
 }
@@ -299,9 +289,6 @@ fn spawn_gutters(
         let window_width = window.resolution.width();
         let window_height = window.resolution.height();
 
-        // We take half the window height because the center of our screen
-        // is (0, 0). The padding would be half the height of the gutter as its
-        // origin is also center rather than top left
         let top_gutter_y = window_height / 2. - GUTTER_HEIGHT / 2.;
         let bottom_gutter_y = -window_height / 2. + GUTTER_HEIGHT / 2.;
 
@@ -311,7 +298,6 @@ fn spawn_gutters(
         let shape = Rectangle::from_size(top_gutter.shape.0);
         let color = Color::srgb(0., 0., 0.);
 
-        // We can share these meshes between our gutters by cloning them
         let mesh_handle = meshes.add(shape);
         let material_handle = materials.add(color);
 
@@ -363,8 +349,6 @@ fn move_paddles(
     }
 }
 
-// Returns `Some` if `ball` collides with `wall`. The returned `Collision` is the
-// side of `wall` that `ball` hit.
 fn collide_with_side(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
     if !ball.intersects(&wall) {
         return None;
@@ -466,15 +450,9 @@ fn spawn_ball(
     let shape = Circle::new(BALL_SIZE);
     let color = Color::srgb(1., 0., 0.);
 
-    // `Assets::add` will load these into memory and return a `Handle` (an ID)
-    // to these assets. When all references to this `Handle` are cleaned up
-    // the asset is cleaned up.
     let mesh = meshes.add(shape);
     let material = materials.add(color);
 
-    // Here we are using `spawn` instead of `spawn_empty` followed by an
-    // `insert`. They mean the same thing, letting us spawn many components on a
-    // new entity at once.
     commands.spawn((
         BallBundle::new(1., 1.),
         MaterialMesh2dBundle {
