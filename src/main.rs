@@ -51,6 +51,29 @@ impl BallBundle {
             position: Position(Vec2::new(0., 0.)),
         }
     }
+
+    fn spawn(
+        mut commands: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<ColorMaterial>>,
+    ) {
+        println!("Spawning ball...");
+
+        let shape = Circle::new(BALL_SIZE);
+        let color = Color::srgb(1., 0., 0.);
+
+        let mesh = meshes.add(shape);
+        let material = materials.add(color);
+
+        commands.spawn((
+            Self::new(1., 1.),
+            MaterialMesh2dBundle {
+                mesh: mesh.into(),
+                material,
+                ..default()
+            },
+        ));
+    }
 }
 
 #[derive(Component)]
@@ -73,6 +96,46 @@ impl PaddleBundle {
             velocity: Velocity(Vec2::new(0., 0.)),
         }
     }
+
+    fn spawn(
+        mut commands: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<ColorMaterial>>,
+        window: Query<&Window>,
+    ) {
+        println!("Spawning paddles...");
+
+        if let Ok(window) = window.get_single() {
+            let window_width = window.resolution.width();
+            let padding = 50.;
+            let right_paddle_x = window_width / 2. - padding;
+            let left_paddle_x = -window_width / 2. + padding;
+
+            let shape = Rectangle::new(PADDLE_WIDTH, PADDLE_HEIGHT);
+
+            let mesh = meshes.add(shape);
+
+            commands.spawn((
+                Player,
+                Self::new(right_paddle_x, 0.),
+                MaterialMesh2dBundle {
+                    mesh: mesh.clone().into(),
+                    material: materials.add(Color::srgb(0., 1., 0.)),
+                    ..default()
+                },
+            ));
+
+            commands.spawn((
+                Ai,
+                Self::new(left_paddle_x, 0.),
+                MaterialMesh2dBundle {
+                    mesh: mesh.into(),
+                    material: materials.add(Color::srgb(0., 0., 1.)),
+                    ..default()
+                },
+            ));
+        }
+    }
 }
 
 #[derive(Component)]
@@ -91,6 +154,48 @@ impl GutterBundle {
             gutter: Gutter,
             shape: Shape(Vec2::new(w, GUTTER_HEIGHT)),
             position: Position(Vec2::new(x, y)),
+        }
+    }
+
+    fn spawn(
+        mut commands: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<ColorMaterial>>,
+        window: Query<&Window>,
+    ) {
+        if let Ok(window) = window.get_single() {
+            let window_width = window.resolution.width();
+            let window_height = window.resolution.height();
+
+            let top_gutter_y = window_height / 2. - GUTTER_HEIGHT / 2.;
+            let bottom_gutter_y = -window_height / 2. + GUTTER_HEIGHT / 2.;
+
+            let top_gutter = Self::new(0., top_gutter_y, window_width);
+            let bottom_gutter = Self::new(0., bottom_gutter_y, window_width);
+
+            let shape = Rectangle::from_size(top_gutter.shape.0);
+            let color = Color::srgb(0., 0., 0.);
+
+            let mesh_handle = meshes.add(shape);
+            let material_handle = materials.add(color);
+
+            commands.spawn((
+                top_gutter,
+                MaterialMesh2dBundle {
+                    mesh: mesh_handle.clone().into(),
+                    material: material_handle.clone(),
+                    ..default()
+                },
+            ));
+
+            commands.spawn((
+                bottom_gutter,
+                MaterialMesh2dBundle {
+                    mesh: mesh_handle.into(),
+                    material: material_handle.clone(),
+                    ..default()
+                },
+            ));
         }
     }
 }
@@ -126,11 +231,11 @@ fn main() {
         .add_systems(
             Startup,
             (
-                spawn_ball,
-                spawn_camera,
-                spawn_paddles,
-                spawn_gutters,
+                BallBundle::spawn,
+                PaddleBundle::spawn,
+                GutterBundle::spawn,
                 spawn_scoreboard,
+                spawn_camera,
             ),
         )
         .add_systems(
@@ -279,48 +384,6 @@ fn handle_player_input(
     }
 }
 
-fn spawn_gutters(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    window: Query<&Window>,
-) {
-    if let Ok(window) = window.get_single() {
-        let window_width = window.resolution.width();
-        let window_height = window.resolution.height();
-
-        let top_gutter_y = window_height / 2. - GUTTER_HEIGHT / 2.;
-        let bottom_gutter_y = -window_height / 2. + GUTTER_HEIGHT / 2.;
-
-        let top_gutter = GutterBundle::new(0., top_gutter_y, window_width);
-        let bottom_gutter = GutterBundle::new(0., bottom_gutter_y, window_width);
-
-        let shape = Rectangle::from_size(top_gutter.shape.0);
-        let color = Color::srgb(0., 0., 0.);
-
-        let mesh_handle = meshes.add(shape);
-        let material_handle = materials.add(color);
-
-        commands.spawn((
-            top_gutter,
-            MaterialMesh2dBundle {
-                mesh: mesh_handle.clone().into(),
-                material: material_handle.clone(),
-                ..default()
-            },
-        ));
-
-        commands.spawn((
-            bottom_gutter,
-            MaterialMesh2dBundle {
-                mesh: mesh_handle.into(),
-                material: material_handle.clone(),
-                ..default()
-            },
-        ));
-    }
-}
-
 fn project_positions(mut positionables: Query<(&mut Transform, &Position)>) {
     for (mut transform, position) in &mut positionables {
         transform.translation = position.0.extend(0.);
@@ -398,69 +461,6 @@ fn handle_collisions(
             }
         }
     }
-}
-
-fn spawn_paddles(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    window: Query<&Window>,
-) {
-    println!("Spawning paddles...");
-
-    if let Ok(window) = window.get_single() {
-        let window_width = window.resolution.width();
-        let padding = 50.;
-        let right_paddle_x = window_width / 2. - padding;
-        let left_paddle_x = -window_width / 2. + padding;
-
-        let shape = Rectangle::new(PADDLE_WIDTH, PADDLE_HEIGHT);
-
-        let mesh = meshes.add(shape);
-
-        commands.spawn((
-            Player,
-            PaddleBundle::new(right_paddle_x, 0.),
-            MaterialMesh2dBundle {
-                mesh: mesh.clone().into(),
-                material: materials.add(Color::srgb(0., 1., 0.)),
-                ..default()
-            },
-        ));
-
-        commands.spawn((
-            Ai,
-            PaddleBundle::new(left_paddle_x, 0.),
-            MaterialMesh2dBundle {
-                mesh: mesh.into(),
-                material: materials.add(Color::srgb(0., 0., 1.)),
-                ..default()
-            },
-        ));
-    }
-}
-
-fn spawn_ball(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    println!("Spawning ball...");
-
-    let shape = Circle::new(BALL_SIZE);
-    let color = Color::srgb(1., 0., 0.);
-
-    let mesh = meshes.add(shape);
-    let material = materials.add(color);
-
-    commands.spawn((
-        BallBundle::new(1., 1.),
-        MaterialMesh2dBundle {
-            mesh: mesh.into(),
-            material,
-            ..default()
-        },
-    ));
 }
 
 fn spawn_camera(mut commands: Commands) {
