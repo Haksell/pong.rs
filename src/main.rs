@@ -1,8 +1,11 @@
+mod score;
+
 use bevy::{
     math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume},
     prelude::*,
     sprite::MaterialMesh2dBundle,
 };
+use score::{spawn_scoreboard, update_scoreboard, Score, Scored, Scorer};
 
 const BALL_SPEED: f32 = 5.;
 const BALL_SIZE: f32 = 5.;
@@ -10,26 +13,6 @@ const PADDLE_SPEED: f32 = 4.;
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
 const GUTTER_HEIGHT: f32 = 96.;
-
-#[derive(Component)]
-struct PlayerScore;
-
-#[derive(Component)]
-struct AiScore;
-
-#[derive(Resource, Default)]
-struct Score {
-    player: u32,
-    ai: u32,
-}
-
-enum Scorer {
-    Ai,
-    Player,
-}
-
-#[derive(Event)]
-struct Scored(Scorer);
 
 #[derive(Component)]
 struct Ball;
@@ -217,10 +200,8 @@ struct Ai;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Collision {
-    Left,
-    Right,
-    Top,
-    Bottom,
+    Horizontal,
+    Vertical,
 }
 
 fn main() {
@@ -268,62 +249,6 @@ fn move_ai(
     }
 }
 
-fn update_scoreboard(
-    mut player_score: Query<&mut Text, With<PlayerScore>>,
-    mut ai_score: Query<&mut Text, (With<AiScore>, Without<PlayerScore>)>,
-    score: Res<Score>,
-) {
-    if score.is_changed() {
-        if let Ok(mut player_score) = player_score.get_single_mut() {
-            player_score.sections[0].value = score.player.to_string();
-        }
-
-        if let Ok(mut ai_score) = ai_score.get_single_mut() {
-            ai_score.sections[0].value = score.ai.to_string();
-        }
-    }
-}
-
-fn spawn_scoreboard(mut commands: Commands) {
-    commands.spawn((
-        TextBundle::from_section(
-            "0",
-            TextStyle {
-                font_size: 72.0,
-                color: Color::WHITE,
-                ..default()
-            },
-        )
-        .with_text_justify(JustifyText::Center)
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            top: Val::Px(5.0),
-            right: Val::Px(15.0),
-            ..default()
-        }),
-        PlayerScore,
-    ));
-
-    commands.spawn((
-        TextBundle::from_section(
-            "0",
-            TextStyle {
-                font_size: 72.0,
-                color: Color::WHITE,
-                ..default()
-            },
-        )
-        .with_text_justify(JustifyText::Center)
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            top: Val::Px(5.0),
-            left: Val::Px(15.0),
-            ..default()
-        }),
-        AiScore,
-    ));
-}
-
 fn update_score(mut score: ResMut<Score>, mut events: EventReader<Scored>) {
     for event in events.read() {
         match event.0 {
@@ -331,8 +256,6 @@ fn update_score(mut score: ResMut<Score>, mut events: EventReader<Scored>) {
             Scorer::Player => score.player += 1,
         }
     }
-
-    println!("Score: {} - {}", score.player, score.ai);
 }
 
 fn detect_scoring(
@@ -417,18 +340,12 @@ fn collide_with_side(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
         return None;
     }
 
-    let closest = wall.closest_point(ball.center());
-    let offset = ball.center() - closest;
+    let offset = ball.center() - wall.closest_point(ball.center());
+
     let side = if offset.x.abs() > offset.y.abs() {
-        if offset.x < 0. {
-            Collision::Left
-        } else {
-            Collision::Right
-        }
-    } else if offset.y > 0. {
-        Collision::Top
+        Collision::Horizontal
     } else {
-        Collision::Bottom
+        Collision::Vertical
     };
 
     Some(side)
@@ -445,17 +362,11 @@ fn handle_collisions(
                 Aabb2d::new(position.0, shape.0 / 2.),
             ) {
                 match collision {
-                    Collision::Left => {
-                        ball_velocity.0.x *= -1.;
+                    Collision::Horizontal => {
+                        ball_velocity.0.x = -ball_velocity.0.x;
                     }
-                    Collision::Right => {
-                        ball_velocity.0.x *= -1.;
-                    }
-                    Collision::Top => {
-                        ball_velocity.0.y *= -1.;
-                    }
-                    Collision::Bottom => {
-                        ball_velocity.0.y *= -1.;
+                    Collision::Vertical => {
+                        ball_velocity.0.y = -ball_velocity.0.y;
                     }
                 }
             }
