@@ -1,4 +1,4 @@
-use crate::{Ai, Player, Position, Shape, Velocity, GUTTER_HEIGHT};
+use crate::{gutter::GUTTER_HEIGHT, Ai, Player, Position, Shape, Velocity};
 use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
 
 const PADDLE_SPEED: f32 = 4.;
