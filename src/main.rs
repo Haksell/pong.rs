@@ -1,125 +1,13 @@
+mod ball;
+mod paddle;
 mod score;
 
-use bevy::{
-    math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume},
-    prelude::*,
-    sprite::MaterialMesh2dBundle,
-};
+use ball::{handle_collisions, move_ball, Ball, BallBundle};
+use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
+use paddle::{move_paddles, PaddleBundle};
 use score::{spawn_scoreboard, update_scoreboard, Score, Scored, Scorer};
 
-const BALL_SPEED: f32 = 5.;
-const BALL_SIZE: f32 = 5.;
-const PADDLE_SPEED: f32 = 4.;
-const PADDLE_WIDTH: f32 = 10.;
-const PADDLE_HEIGHT: f32 = 50.;
 const GUTTER_HEIGHT: f32 = 96.;
-
-#[derive(Component)]
-struct Ball;
-
-#[derive(Bundle)]
-struct BallBundle {
-    ball: Ball,
-    shape: Shape,
-    velocity: Velocity,
-    position: Position,
-}
-
-impl BallBundle {
-    fn new(x: f32, y: f32) -> Self {
-        Self {
-            ball: Ball,
-            shape: Shape(Vec2::splat(BALL_SIZE)),
-            velocity: Velocity(Vec2::new(x, y)),
-            position: Position(Vec2::new(0., 0.)),
-        }
-    }
-
-    fn spawn(
-        mut commands: Commands,
-        mut meshes: ResMut<Assets<Mesh>>,
-        mut materials: ResMut<Assets<ColorMaterial>>,
-    ) {
-        println!("Spawning ball...");
-
-        let shape = Circle::new(BALL_SIZE);
-        let color = Color::srgb(1., 0., 0.);
-
-        let mesh = meshes.add(shape);
-        let material = materials.add(color);
-
-        commands.spawn((
-            Self::new(1., 1.),
-            MaterialMesh2dBundle {
-                mesh: mesh.into(),
-                material,
-                ..default()
-            },
-        ));
-    }
-}
-
-#[derive(Component)]
-struct Paddle;
-
-#[derive(Bundle)]
-struct PaddleBundle {
-    paddle: Paddle,
-    shape: Shape,
-    position: Position,
-    velocity: Velocity,
-}
-
-impl PaddleBundle {
-    fn new(x: f32, y: f32) -> Self {
-        Self {
-            paddle: Paddle,
-            shape: Shape(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
-            position: Position(Vec2::new(x, y)),
-            velocity: Velocity(Vec2::new(0., 0.)),
-        }
-    }
-
-    fn spawn(
-        mut commands: Commands,
-        mut meshes: ResMut<Assets<Mesh>>,
-        mut materials: ResMut<Assets<ColorMaterial>>,
-        window: Query<&Window>,
-    ) {
-        println!("Spawning paddles...");
-
-        if let Ok(window) = window.get_single() {
-            let window_width = window.resolution.width();
-            let padding = 50.;
-            let right_paddle_x = window_width / 2. - padding;
-            let left_paddle_x = -window_width / 2. + padding;
-
-            let shape = Rectangle::new(PADDLE_WIDTH, PADDLE_HEIGHT);
-
-            let mesh = meshes.add(shape);
-
-            commands.spawn((
-                Player,
-                Self::new(right_paddle_x, 0.),
-                MaterialMesh2dBundle {
-                    mesh: mesh.clone().into(),
-                    material: materials.add(Color::srgb(0., 1., 0.)),
-                    ..default()
-                },
-            ));
-
-            commands.spawn((
-                Ai,
-                Self::new(left_paddle_x, 0.),
-                MaterialMesh2dBundle {
-                    mesh: mesh.into(),
-                    material: materials.add(Color::srgb(0., 0., 1.)),
-                    ..default()
-                },
-            ));
-        }
-    }
-}
 
 #[derive(Component)]
 struct Gutter;
@@ -198,45 +86,6 @@ struct Player;
 #[derive(Component)]
 struct Ai;
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-enum Collision {
-    Horizontal,
-    Vertical,
-}
-
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .init_resource::<Score>()
-        .add_event::<Scored>()
-        .add_systems(
-            Startup,
-            (
-                BallBundle::spawn,
-                PaddleBundle::spawn,
-                GutterBundle::spawn,
-                spawn_scoreboard,
-                spawn_camera,
-            ),
-        )
-        .add_systems(
-            Update,
-            (
-                move_ball,
-                handle_player_input,
-                detect_scoring,
-                move_ai,
-                reset_ball.after(detect_scoring),
-                update_score.after(detect_scoring),
-                update_scoreboard.after(update_score),
-                move_paddles.after(handle_player_input),
-                project_positions.after(move_ball),
-                handle_collisions.after(move_ball),
-            ),
-        )
-        .run();
-}
-
 fn move_ai(
     mut ai: Query<(&mut Velocity, &Position), With<Ai>>,
     ball: Query<&Position, With<Ball>>,
@@ -297,13 +146,8 @@ fn handle_player_input(
     mut paddle: Query<&mut Velocity, With<Player>>,
 ) {
     if let Ok(mut velocity) = paddle.get_single_mut() {
-        if keyboard_input.pressed(KeyCode::ArrowUp) {
-            velocity.0.y = 1.;
-        } else if keyboard_input.pressed(KeyCode::ArrowDown) {
-            velocity.0.y = -1.;
-        } else {
-            velocity.0.y = 0.;
-        }
+        velocity.0.y = keyboard_input.pressed(KeyCode::ArrowUp) as u8 as f32
+            - keyboard_input.pressed(KeyCode::ArrowDown) as u8 as f32;
     }
 }
 
@@ -313,67 +157,39 @@ fn project_positions(mut positionables: Query<(&mut Transform, &Position)>) {
     }
 }
 
-fn move_ball(mut ball: Query<(&mut Position, &Velocity), With<Ball>>) {
-    if let Ok((mut position, velocity)) = ball.get_single_mut() {
-        position.0 += velocity.0 * BALL_SPEED;
-    }
-}
-
-fn move_paddles(
-    mut paddle: Query<(&mut Position, &Velocity), With<Paddle>>,
-    window: Query<&Window>,
-) {
-    if let Ok(window) = window.get_single() {
-        let window_height = window.resolution.height();
-
-        for (mut position, velocity) in &mut paddle {
-            let new_position = position.0 + velocity.0 * PADDLE_SPEED;
-            if new_position.y.abs() < window_height / 2. - GUTTER_HEIGHT - PADDLE_HEIGHT / 2. {
-                position.0 = new_position;
-            }
-        }
-    }
-}
-
-fn collide_with_side(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
-    if !ball.intersects(&wall) {
-        return None;
-    }
-
-    let offset = ball.center() - wall.closest_point(ball.center());
-
-    let side = if offset.x.abs() > offset.y.abs() {
-        Collision::Horizontal
-    } else {
-        Collision::Vertical
-    };
-
-    Some(side)
-}
-
-fn handle_collisions(
-    mut ball: Query<(&mut Velocity, &Position, &Shape), With<Ball>>,
-    other_things: Query<(&Position, &Shape), Without<Ball>>,
-) {
-    if let Ok((mut ball_velocity, ball_position, ball_shape)) = ball.get_single_mut() {
-        for (position, shape) in &other_things {
-            if let Some(collision) = collide_with_side(
-                BoundingCircle::new(ball_position.0, ball_shape.0.x),
-                Aabb2d::new(position.0, shape.0 / 2.),
-            ) {
-                match collision {
-                    Collision::Horizontal => {
-                        ball_velocity.0.x = -ball_velocity.0.x;
-                    }
-                    Collision::Vertical => {
-                        ball_velocity.0.y = -ball_velocity.0.y;
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn spawn_camera(mut commands: Commands) {
     commands.spawn_empty().insert(Camera2dBundle::default());
+}
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .init_resource::<Score>()
+        .add_event::<Scored>()
+        .add_systems(
+            Startup,
+            (
+                BallBundle::spawn,
+                PaddleBundle::spawn,
+                GutterBundle::spawn,
+                spawn_scoreboard,
+                spawn_camera,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                move_ball,
+                handle_player_input,
+                detect_scoring,
+                move_ai,
+                reset_ball.after(detect_scoring),
+                update_score.after(detect_scoring),
+                update_scoreboard.after(update_score),
+                move_paddles.after(handle_player_input),
+                project_positions.after(move_ball),
+                handle_collisions.after(move_ball),
+            ),
+        )
+        .run();
 }
